@@ -1,0 +1,148 @@
+---
+title: "Neanderthal Analysis"
+output: html_notebook
+---
+
+```{r}
+# install necessary packages
+install.packages("tidyverse")
+install.packages("data.table")
+install.packages("tidyr")
+install.packages("R.utils")
+library(R.utils)
+library(tidyverse)
+library(data.table)
+library(tidyr)
+
+```
+
+
+
+```{r}
+# reading in scn9a vcf and filtering for neanderthal variants
+# unzip scn9a variant call file
+gunzip("SCN9A_gene_anno.vcf.gz")
+neanderthal_vcf <- fread("SCN9A_gene_anno.vcf")
+
+# create list of 3 neanderthal variants
+neanderthal_snps <- c("2:166277030:T:G", "2:166272746:C:A", "2:166198883:T:C")
+
+# filter vcf for neanderthal variants
+neanderthal_vcf <- neanderthal_vcf[rownames(neanderthal_vcf) %in% snp_ids]
+
+
+```
+
+
+
+```{r}
+
+# define function for extracting heterozygous carriers from the neanderthal vcf
+extract_carriers <- function(dataset) {
+  dt <- as.data.table(dataset)
+  
+  # Melt the dataset
+  melted <- melt(dt, id.vars = names(dt)[1:8], variable.name = "sample", value.name = "genotype")
+  
+  # Filter for heterozygous genotypes only
+  het <- melted[genotype %in% c("0/1", "1/0")]
+  
+  # Select relevant columns and extract carrier ID
+  result <- het[, .(
+    chrom = get(names(dt)[1]),
+    pos = get(names(dt)[2]),
+    ID = get(names(dt)[3]),
+    ref = get(names(dt)[4]),
+    alt = get(names(dt)[5]),
+    carrier = substr(sample, 1, 7)
+  )]
+  
+  return(result)
+}
+
+# creating list of carriers for each variant
+carriers <- extract_carriers(neanderthal_vcf)
+```
+
+
+```{r}
+# creating counts table
+counts <- table(carriers$ID)
+counts <- as.data.frame(snps_ind)
+counts <- counts %>% pivot_wider(names_from = Var2, values_from = Freq, values_fill = NA)
+colnames(counts) <- c("ID","het")
+
+```
+
+
+```{r}
+# creating columns for each variant and the corresponding column for those carrying all three variants
+pheno$m932l <- ifelse(pheno$eid %in% carriers[carriers$ID == "2:166277030:T:G", ]$eid, 1, 0)
+pheno$v991l <- ifelse(pheno$eid %in% (carriers[carriers$ID == "2:166272746:C:A",])$eid, 1, 0)
+pheno$d1908g <- ifelse(pheno$eid %in% (carriers[carriers$ID == "2:166198883:T:C",])$eid, 1, 0)
+pheno$triple_carrier <- ifelse(pheno$m932l == 1 & pheno$v991l == 1 & pheno$d1908g == 1, 1, 0)
+```
+
+
+```{r}
+# removing individuals carrying scn9a GoF mutations
+pheno_filtered <- pheno[!(pheno$scn9a_glm == 1 & pheno$triple_carrier == 0),]
+```
+
+
+
+```{r}
+# fitting glm
+
+phenotypes <- c("chronic_pain","neuropathic_pain","Gabapentinoid","NaV_Blocker","Opioid_dual","Opioid_strong","TCA")
+
+glm_data = list()
+glm_data$phenotype <- character()
+glm_data$p_value <- numeric()
+glm_data$or <- numeric()
+glm_data$ci_low <- numeric()
+glm_data$ci_high <- numeric()
+
+# saving model outputs to dataframe nb: generating confidence intervals can take some time
+for (i in seq_along(phenotypes)){
+  model <- glm(as.formula(paste(phenotypes[i], "~cmt + sex + age + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10")),
+               data=pheno_filtered,
+               family=binomial(link="logit"))
+  glm_data$phenotype <- append(glm_data$phenotype, phenotypes[i])
+  glm_data$p_value <- append(glm_data$p_value, coef(summary(model))[2,4])
+  glm_data$or <- append(glm_data$or, exp(model$coefficients)[2])
+  glm_data$ci_low <- append(glm_data$ci_low, exp(confint(model))[2,1])
+  glm_data$ci_high <- append(glm_data$ci_high, exp(confint(model))[2,2])
+}
+
+# statistics generated from glm found in glm_data
+glm_data <- as.data.frame(glm_data)
+
+```
+
+
+
+```{r}
+# plotting odds ratios
+
+order <- c("TCA","Opioid_strong","Opioid_dual","NaV_Blocker","Gabapentinoid","neuropathic_pain","chronic_pain")
+or_plot <- ggplot(glm_data, aes(x=or, y=factor(phenotype, levels=order))) + 
+  geom_vline(aes(xintercept=1), linewidth=.25, linetype="dashed") +
+  geom_errorbarh(aes(xmin=ci_low, xmax=ci_high), linewidth=0.5, height=0.25) + 
+  theme_bw() + 
+  geom_point(size=2, color="black") +
+  labs(x = "Odds ratio ± 95%CI", y= "")
+
+or_plot
+```
+
+
+
+
+
+
+
+
+
+
+
