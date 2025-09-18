@@ -13,7 +13,6 @@ library(R.utils)
 library(tidyverse)
 library(data.table)
 library(tidyr)
-
 ```
 
 
@@ -29,14 +28,11 @@ neanderthal_snps <- c("2:166277030:T:G", "2:166272746:C:A", "2:166198883:T:C")
 
 # filter vcf for neanderthal variants
 neanderthal_vcf <- neanderthal_vcf[rownames(neanderthal_vcf) %in% snp_ids]
-
-
 ```
 
 
 
 ```{r}
-
 # define function for extracting heterozygous carriers from the neanderthal vcf
 extract_carriers <- function(dataset) {
   dt <- as.data.table(dataset)
@@ -117,7 +113,6 @@ for (i in seq_along(phenotypes)){
 
 # statistics generated from glm found in glm_data
 glm_data <- as.data.frame(glm_data)
-
 ```
 
 
@@ -135,6 +130,7 @@ or_plot <- ggplot(glm_data, aes(x=or, y=factor(phenotype, levels=order))) +
 
 or_plot
 ```
+
 
 
 
